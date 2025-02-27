@@ -1,76 +1,122 @@
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
+import { GraphQLError } from 'graphql';
+import {v1 as uuid} from 'uuid';
+import axios from 'axios';
 
 const persons = [
   {
     name: "pedro",
     phone: "0234345",
+    street: "pasljf",
     city: "Tokio",
     id: "lsakdjfliuweriuehfiudhfi"
   },
   {
     name: "lucas",
     phone: "89079879",
+    street: "saldfj",
     city: "Br",
     id: "lsakdjfliuweriuehfiudhfi"
   },
   {
     name: "atlas",
-    phone: "9878yuh",
+    street: "sldfjkfff ff",
     city: "Lima",
     id: "lsakdjfliuweriuehfiudhfi"
   }
 ];
 
-// A schema is a collection of type definitions (hence "typeDefs")
-// that together define the "shape" of queries that are executed against
-// your data.
-const typeDefs = `#graphql
-  # Comments in GraphQL strings (such as this one) start with the hash (#) symbol.
+const typeDefs = 
+`#graphql
 
-  # This "Book" type defines the queryable fields for every book in our data source.
+  enum YesNo{
+    YES
+    NO
+  }
+  type Address {
+    street: String!
+    city: String!
+  }
   type Person {
     name: String!
     phone: String
-    street: String!
-    city: String!
+    address: Address!
     id: ID!
   }
-
-  # The "Query" type is special: it lists all of the available queries that
-  # clients can execute, along with the return type for each. In this
-  # case, the "books" query returns an array of zero or more Books (defined above).
   type Query {
     personCount: Int!
-    allPersons: [Person]!
+    allPersons(phone: YesNo): [Person]!
     findPerson(name: String!): Person
+  }
+  type Mutation {
+    addPerson(
+      name: String!
+      phone: String
+      street: String!
+      city: String!
+    ): Person
+    editNumber(
+      name: String!
+      phone: String!
+    ): Person
   }
 `;
 
 const resolvers = {
   Query: {
     personCount: () => persons.length,
-    allPersons: () => persons,
+    allPersons: async (root, args) => {
+      const {data: personsFromRestApi} = await axios.get('http://localhost:3000/persons')
+      console.log(personsFromRestApi)
+      if(!args.phone) return personsFromRestApi
+      const byPhone = person => 
+        args.phone === "YES" ? person.phone : !person.phone
+      return personsFromRestApi.filter(byPhone)
+    },
     findPerson: (root, args) => {
       const {name} = args
       return persons.find(person => person.name === name)
     }
+  },
+  Mutation: {
+    addPerson: (root, args) => {
+      if(persons.find(p => p.name === args.name)){
+        throw new GraphQLError('Name must be unique', {
+          extensions: {
+            code: 'GRAPHQL_VALIDATION_FAILED'
+          }
+        })
+      }
+      // const {name, phone, street, city} = args
+      const person = {...args, id: uuid()}
+      persons.push(person)
+      return person
+    },
+    editNumber: (root, args) => {
+      const personIndex = persons.findIndex(p => p.name === args.name)
+      if(personIndex === -1) return null
+      const person = persons[personIndex]
+      const updatedPerson = {...person, phone: args.phone}
+      persons[personIndex] = updatedPerson
+      return updatedPerson
+    }
+  },
+  Person: {
+    address: (root) => {
+      return {
+        street: root.street,
+        city: root.city
+      }
+    }
   }
 };
 
-// The ApolloServer constructor requires two parameters: your schema
-// definition and your set of resolvers.
 const server = new ApolloServer({
   typeDefs,
   resolvers,
 });
-
-// Passing an ApolloServer instance to the `startStandaloneServer` function:
-//  1. creates an Express app
-//  2. installs your ApolloServer instance as middleware
-//  3. prepares your app to handle incoming requests
 const { url } = await startStandaloneServer(server, {
   listen: { port: 4000 },
 });
-
 console.log(`🚀  Server ready at: ${url}`);
