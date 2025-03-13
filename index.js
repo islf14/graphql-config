@@ -3,29 +3,7 @@ import { startStandaloneServer } from '@apollo/server/standalone';
 import { GraphQLError } from 'graphql';
 import {v1 as uuid} from 'uuid';
 import axios from 'axios';
-
-const persons = [
-  {
-    name: "pedro",
-    phone: "0234345",
-    street: "pasljf",
-    city: "Tokio",
-    id: "lsakdjfliuweriuehfiudhfi"
-  },
-  {
-    name: "lucas",
-    phone: "89079879",
-    street: "saldfj",
-    city: "Br",
-    id: "lsakdjfliuweriuehfiudhfi"
-  },
-  {
-    name: "atlas",
-    street: "sldfjkfff ff",
-    city: "Lima",
-    id: "lsakdjfliuweriuehfiudhfi"
-  }
-];
+import { persons } from './persons.js';
 
 const typeDefs = 
 `#graphql
@@ -67,12 +45,12 @@ const resolvers = {
   Query: {
     personCount: () => persons.length,
     allPersons: async (root, args) => {
-      const {data: personsFromRestApi} = await axios.get('http://localhost:3000/persons')
-      console.log(personsFromRestApi)
-      if(!args.phone) return personsFromRestApi
+      // const {data: personsFromRestApi} = await axios.get('http://localhost:3000/persons')
+      // console.log(personsFromRestApi)
+      if(!args.phone) return persons
       const byPhone = person => 
         args.phone === "YES" ? person.phone : !person.phone
-      return personsFromRestApi.filter(byPhone)
+      return persons.filter(byPhone)
     },
     findPerson: (root, args) => {
       const {name} = args
