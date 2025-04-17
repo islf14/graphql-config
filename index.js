@@ -1,12 +1,26 @@
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import { GraphQLError } from 'graphql';
-import './db.js'
+import './db.js';
 import Person from './models/person.js';
 import User from './models/user.js';
 import jwt from 'jsonwebtoken';
+import { PubSub } from 'graphql-subscriptions';
+import { expressMiddleware } from '@apollo/server/express4';
+import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
+import { createServer } from 'http';
+import express from "express";
+import { makeExecutableSchema } from '@graphql-tools/schema';
+import { WebSocketServer } from 'ws';
+import { useServer } from 'graphql-ws/use/ws';
+import http from "http";
+import cors from "cors";
 
-const JWT_SECRET = 'HERE_SECRET_WORD_FOR_GENERATE_TOKEN'
+const pubsub = new PubSub();
+const JWT_SECRET = 'HERE_SECRET_WORD_FOR_GENERATE_TOKEN';
+const SUBSCRIPTION_EVENTS = {
+  ADDED_PERSON: 'ADDED_PERSON'
+}
 
 const typeDefs = 
 `#graphql
@@ -63,6 +77,11 @@ const typeDefs =
       name: String!
     ): User
   }
+
+  type Subscription {
+    addedPerson: Person!
+  }
+
 `;
 
 const resolvers = {
@@ -78,7 +97,6 @@ const resolvers = {
       return await Person.findOne({name})
     },
     me: (root, args, context) => {
-      // console.log(context.currentUser)
       return context.currentUser
     }
   },
@@ -87,11 +105,8 @@ const resolvers = {
     
     addPerson: async (root, args, context) => {
       const {currentUser} = context
-      console.log(currentUser)
       if(!currentUser) throw  new GraphQLError("not authenticated")
-
       const person = new Person({...args})
-      console.log(person)
       try{
         await person.save()
         currentUser.friends = currentUser.friends.concat(person)
@@ -103,6 +118,7 @@ const resolvers = {
           }
         })
       }
+      pubsub.publish(SUBSCRIPTION_EVENTS.ADDED_PERSON, { addedPerson: person})
       return person
     },
 
@@ -173,24 +189,116 @@ const resolvers = {
         city: root.city
       }
     }
+  },
+
+  Subscription: {
+    addedPerson: {
+      subscribe: () => pubsub.asyncIterator(SUBSCRIPTION_EVENTS.ADDED_PERSON)
+    }
   }
 };
 
-const server = new ApolloServer ({
-  typeDefs,
-  resolvers,
+////////// SERVER expressMiddleware - SUBSCRIPTIONS /////////////
+
+const schema = makeExecutableSchema({ typeDefs, resolvers });
+const app = express();
+const httpServer = createServer(app);
+
+const wsServer = new WebSocketServer({
+  server: httpServer,
+  path: '/subscriptions',
+});
+const serverCleanup = useServer({ schema }, wsServer);
+
+const server = new ApolloServer({
+  schema,
+  plugins: [
+    ApolloServerPluginDrainHttpServer({ httpServer }),
+    {
+      async serverWillStart() {
+        return {
+          async drainServer() {
+            await serverCleanup.dispose();
+          },
+        };
+      },
+    },
+  ],
 });
 
-const { url } = await startStandaloneServer(server, {
-  listen: { port: 4000 },
-  context: async ({ req}) => {
-    const auth = req ? req.headers.authorization: null
-    if(auth && auth.toLowerCase().startsWith('bearer ')) {
-      const token = auth.substring(7)
-      const {id} = jwt.verify(token, JWT_SECRET)
-      const currentUser = await User.findById(id).populate('friends')
-      return { currentUser }
-    }
-  },
+await server.start();
+
+app.use(
+  '/',
+  cors(),
+  express.json(),
+  expressMiddleware(server, {
+    context: async ({ req }) => {
+      const auth = req ? req.headers.authorization: null
+      if(auth && auth.toLowerCase().startsWith('bearer ')) {
+        const token = auth.substring(7)
+        const {id} = jwt.verify(token, JWT_SECRET)
+        const currentUser = await User.findById(id).populate('friends')
+        return { currentUser }
+      }
+    },
+  }),
+);
+
+const PORT = 4000;
+httpServer.listen(PORT, () => {
+  console.log(`Server is now running on http://localhost:${PORT}`);
 });
-console.log(`🚀  Server ready at: ${url}`);
+
+/////////////////// SERVER expressMiddleware ///////////////////
+
+// const app = express();
+// const httpServer = http.createServer(app);
+// const server = new ApolloServer ({
+//   typeDefs,
+//   resolvers,
+//   plugins: [ApolloServerPluginDrainHttpServer({ httpServer })]
+// });
+// await server.start();
+// app.use(
+//   '/',
+//   cors(),
+//   express.json(),
+//   expressMiddleware(server, {
+//     context: async ({ req }) => {
+//       const auth = req ? req.headers.authorization: null
+//       if(auth && auth.toLowerCase().startsWith('bearer ')) {
+//         const token = auth.substring(7)
+//         const {id} = jwt.verify(token, JWT_SECRET)
+//         const currentUser = await User.findById(id).populate('friends')
+//         return { currentUser }
+//       }
+//     },
+//   }),
+// );
+// await new Promise((resolve) =>
+//   httpServer.listen({ port: 4000 }, resolve),
+// );
+// console.log(`🚀 Server ready at http://localhost:4000/`);
+
+//////////// SERVER startStandaloneServer ////////////////
+
+// const server = new ApolloServer({
+//   typeDefs,
+//   resolvers,
+// });
+// const { url } = await startStandaloneServer(server, {
+//   listen: { port: 4000 },
+//   context: async ({ req }) => {
+//     const auth = req ? req.headers.authorization: null
+//     if(auth && auth.toLowerCase().startsWith('bearer ')) {
+//       const token = auth.substring(7)
+//       const {id} = jwt.verify(token, JWT_SECRET)
+//       const currentUser = await User.findById(id).populate('friends')
+//       return { currentUser }
+//     }
+//   },
+// });
+// console.log(`🚀  Server ready at: ${url}`);
+
+//////////////////////////

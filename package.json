@@ -4,6 +4,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "start": "node index.js",
     "json-server": "json-server --watch db.json",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -12,17 +13,27 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "@apollo/rover": "^0.27.2"
+    "@apollo/rover": "^0.27.2",
+    "@types/node": "^22.14.0",
+    "typescript": "^5.8.3"
   },
   "dependencies": {
-    "@apollo/server": "^4.11.3",
+    "@apollo/server": "^4.12.0",
+    "@graphql-tools/schema": "^10.0.23",
     "axios": "^1.8.1",
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
     "graphql": "^16.10.0",
+    "graphql-http": "^1.22.4",
+    "graphql-subscriptions": "^3.0.0",
+    "graphql-ws": "^6.0.4",
     "json-server": "^1.0.0-beta.3",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.14.2",
     "mongoose": "^7.8.6",
     "mongoose-unique-validator": "4.0.1",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "ws": "^8.18.1"
   }
 }
